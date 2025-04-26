@@ -439,24 +439,8 @@ try:
         # Show sample data option if no file is uploaded
         st.markdown('<div class="sub-header">No Data Uploaded</div>', unsafe_allow_html=True)
         st.markdown("""
-        Please upload your cybersecurity attacks data to view the dashboard.
-        
-        The expected format for the attacks CSV file should include columns like:
-        - Attack category
-        - Attack subcategory
-        - Protocol
-        - Source IP
-        - Source Port
-        - Destination IP
-        - Destination Port
-        - Attack Name
-        - Attack Reference
-        - Time
-        
-        The TCP ports CSV file should include:
-        - Port
-        - Service
-        - Description
+        To proceed and view the dashboard, kindly upload your cybersecurity attacks data.
+
         """)
         
         # Option to use sample data
