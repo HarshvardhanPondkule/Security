@@ -164,22 +164,22 @@ def process_data(attacks_df, ports_df=None, column_mapping=None):
         if orig_col in attacks_df.columns:
             std_df[std_col] = attacks_df[orig_col]
     
-    # Drop rows with missing essential data
+    # Drop rows with missing essential data - modified to check if columns exist first
     essential_cols = ['attack_category', 'source_ip', 'destination_ip']
-    essential_cols = [col for col in essential_cols if col in std_df.columns]
+    existing_essential_cols = [col for col in essential_cols if col in std_df.columns]
     
-    if essential_cols:
-        std_df = std_df.dropna(subset=essential_cols)
+    if existing_essential_cols:
+        std_df = std_df.dropna(subset=existing_essential_cols)
     
-    # Convert timestamp to datetime
+    # Convert timestamp to datetime if time column exists
     if 'time' in std_df.columns:
         std_df['time'] = std_df['time'].apply(parse_timestamp)
     
-    # Extract CVE from Attack Reference
+    # Extract CVE from Attack Reference if column exists
     if 'attack_reference' in std_df.columns:
         std_df['cve'] = std_df['attack_reference'].apply(extract_cve)
     
-    # Add service name based on destination port if ports_df is available
+    # Add service name based on destination port if ports_df is available and destination_port exists
     if ports_df is not None and 'destination_port' in std_df.columns:
         # Try to find the port column in ports_df
         port_col = None
@@ -259,14 +259,11 @@ def display_dashboard(df):
             st.metric("Total Attacks", f"{len(df)}")
             st.markdown('</div>', unsafe_allow_html=True)
             
+        # Only display metrics for columns that exist
         with col2:
             if 'attack_category' in df.columns:
                 st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.metric("Unique Attack Categories", f"{df['attack_category'].nunique()}")
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-                st.metric("Unique Attack Categories", "N/A")
                 st.markdown('</div>', unsafe_allow_html=True)
             
         with col3:
@@ -274,22 +271,14 @@ def display_dashboard(df):
                 st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.metric("Unique Source IPs", f"{df['source_ip'].nunique()}")
                 st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-                st.metric("Unique Source IPs", "N/A")
-                st.markdown('</div>', unsafe_allow_html=True)
             
         with col4:
             if 'destination_ip' in df.columns:
                 st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.metric("Unique Target IPs", f"{df['destination_ip'].nunique()}")
                 st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="card">', unsafe_allow_html=True)
-                st.metric("Unique Target IPs", "N/A")
-                st.markdown('</div>', unsafe_allow_html=True)
         
-        # Attack distribution by category
+        # Attack distribution by category - only if column exists
         if 'attack_category' in df.columns:
             st.markdown('<div class="sub-header">Attack Distribution</div>', unsafe_allow_html=True)
             
@@ -324,10 +313,8 @@ def display_dashboard(df):
                         color_discrete_sequence=px.colors.qualitative.Bold
                     )
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("Protocol information not available in the dataset.")
         
-        # Timeline of attacks
+        # Timeline of attacks - only if time column exists and has valid data
         if 'time' in df.columns and not df['time'].isna().all():
             st.markdown('<div class="sub-header">Attack Timeline</div>', unsafe_allow_html=True)
             
@@ -349,56 +336,53 @@ def display_dashboard(df):
     with tab2:
         st.markdown('<div class="sub-header">Attack Analysis</div>', unsafe_allow_html=True)
         
-        # Filters
-        col1, col2, col3 = st.columns(3)
+        # Only show filters for columns that exist
+        filter_cols = st.columns(3)
         
-        with col1:
+        filter_data = {}
+        
+        with filter_cols[0]:
             if 'attack_category' in df.columns:
-                selected_category = st.multiselect(
+                filter_data['category'] = st.multiselect(
                     "Select Attack Category",
                     options=df['attack_category'].dropna().unique(),
                     default=df['attack_category'].dropna().unique()[0] if not df['attack_category'].dropna().empty else None
                 )
-            else:
-                st.info("Attack category information not available")
-                selected_category = []
         
-        with col2:
+        with filter_cols[1]:
             if 'protocol' in df.columns:
-                selected_protocol = st.multiselect(
+                filter_data['protocol'] = st.multiselect(
                     "Select Protocol",
                     options=df['protocol'].dropna().unique(),
                     default=None
                 )
-            else:
-                selected_protocol = []
             
-        with col3:
+        with filter_cols[2]:
             if 'attack_subcategory' in df.columns:
-                selected_subcategory = st.multiselect(
+                filter_data['subcategory'] = st.multiselect(
                     "Select Attack Subcategory",
                     options=df['attack_subcategory'].dropna().unique(),
                     default=None
                 )
-            else:
-                selected_subcategory = []
         
         # Filter data based on selections
         filtered_df = df.copy()
-        if selected_category and 'attack_category' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['attack_category'].isin(selected_category)]
-        if selected_protocol and 'protocol' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['protocol'].isin(selected_protocol)]
-        if selected_subcategory and 'attack_subcategory' in filtered_df.columns:
-            filtered_df = filtered_df[filtered_df['attack_subcategory'].isin(selected_subcategory)]
+        if 'category' in filter_data and filter_data['category'] and 'attack_category' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['attack_category'].isin(filter_data['category'])]
+        if 'protocol' in filter_data and filter_data['protocol'] and 'protocol' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['protocol'].isin(filter_data['protocol'])]
+        if 'subcategory' in filter_data and filter_data['subcategory'] and 'attack_subcategory' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['attack_subcategory'].isin(filter_data['subcategory'])]
         
-        # Show attack details
+        # Show attack details only if data exists after filtering
         if not filtered_df.empty:
             col1, col2 = st.columns(2)
             
+            # Only display charts for columns that exist
+            attack_name_displayed = False
             with col1:
-                # Top Attack Names
                 if 'attack_name' in filtered_df.columns:
+                    attack_name_displayed = True
                     attack_counts = filtered_df['attack_name'].value_counts().nlargest(10).reset_index()
                     attack_counts.columns = ['Attack Name', 'Count']
                     
@@ -413,11 +397,8 @@ def display_dashboard(df):
                     )
                     fig.update_layout(yaxis={'categoryorder':'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info("Attack name information not available in the dataset.")
             
             with col2:
-                # CVE Distribution
                 if 'cve' in filtered_df.columns:
                     cve_counts = filtered_df['cve'].dropna().value_counts().nlargest(10).reset_index()
                     if not cve_counts.empty:
@@ -432,12 +413,10 @@ def display_dashboard(df):
                             color_continuous_scale='Blues'
                         )
                         st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.info("No CVE data available for the selected filters.")
-                else:
-                    st.info("CVE information not available in the dataset.")
+                elif not attack_name_displayed:
+                    st.write("No attack name or CVE data available in the dataset.")
             
-            # Attack subcategory distribution
+            # Attack subcategory distribution - only if column exists
             if 'attack_subcategory' in filtered_df.columns:
                 subcategory_counts = filtered_df['attack_subcategory'].value_counts().reset_index()
                 subcategory_counts.columns = ['Attack Subcategory', 'Count']
@@ -450,94 +429,92 @@ def display_dashboard(df):
                     color_discrete_sequence=px.colors.qualitative.Pastel
                 )
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Attack subcategory information not available in the dataset.")
         else:
             st.warning("No data available for the selected filters.")
     
     with tab3:
         st.markdown('<div class="sub-header">Network Traffic Analysis</div>', unsafe_allow_html=True)
         
-        col1, col2 = st.columns(2)
+        # Only show IP analysis if columns exist
+        ip_analysis_displayed = False
+        if 'source_ip' in df.columns or 'destination_ip' in df.columns:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if 'source_ip' in df.columns:
+                    ip_analysis_displayed = True
+                    source_ip_counts = df['source_ip'].value_counts().nlargest(10).reset_index()
+                    source_ip_counts.columns = ['Source IP', 'Count']
+                    
+                    fig = px.bar(
+                        source_ip_counts,
+                        x='Source IP',
+                        y='Count',
+                        title='Top Source IPs',
+                        color='Count',
+                        color_continuous_scale='Viridis'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if 'destination_ip' in df.columns:
+                    ip_analysis_displayed = True
+                    dest_ip_counts = df['destination_ip'].value_counts().nlargest(10).reset_index()
+                    dest_ip_counts.columns = ['Destination IP', 'Count']
+                    
+                    fig = px.bar(
+                        dest_ip_counts,
+                        x='Destination IP',
+                        y='Count',
+                        title='Top Destination IPs',
+                        color='Count',
+                        color_continuous_scale='Plasma'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
         
-        with col1:
-            # Source IP Analysis
-            if 'source_ip' in df.columns:
-                source_ip_counts = df['source_ip'].value_counts().nlargest(10).reset_index()
-                source_ip_counts.columns = ['Source IP', 'Count']
-                
-                fig = px.bar(
-                    source_ip_counts,
-                    x='Source IP',
-                    y='Count',
-                    title='Top Source IPs',
-                    color='Count',
-                    color_continuous_scale='Viridis'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Source IP information not available in the dataset.")
+        if not ip_analysis_displayed:
+            st.write("No IP information available in the dataset.")
         
-        with col2:
-            # Destination IP Analysis
-            if 'destination_ip' in df.columns:
-                dest_ip_counts = df['destination_ip'].value_counts().nlargest(10).reset_index()
-                dest_ip_counts.columns = ['Destination IP', 'Count']
-                
-                fig = px.bar(
-                    dest_ip_counts,
-                    x='Destination IP',
-                    y='Count',
-                    title='Top Destination IPs',
-                    color='Count',
-                    color_continuous_scale='Plasma'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Destination IP information not available in the dataset.")
+        # Only show port analysis if columns exist
+        port_analysis_displayed = False
+        if 'source_port' in df.columns or 'destination_port' in df.columns:
+            st.markdown('<div class="sub-header">Port Analysis</div>', unsafe_allow_html=True)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if 'source_port' in df.columns:
+                    port_analysis_displayed = True
+                    source_port_counts = df['source_port'].value_counts().nlargest(10).reset_index()
+                    source_port_counts.columns = ['Source Port', 'Count']
+                    
+                    fig = px.bar(
+                        source_port_counts,
+                        x='Source Port',
+                        y='Count',
+                        title='Top Source Ports',
+                        color='Count',
+                        color_continuous_scale='Teal'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if 'destination_port' in df.columns:
+                    port_analysis_displayed = True
+                    dest_port_counts = df['destination_port'].value_counts().nlargest(10).reset_index()
+                    dest_port_counts.columns = ['Destination Port', 'Count']
+                    
+                    fig = px.bar(
+                        dest_port_counts,
+                        x='Destination Port',
+                        y='Count',
+                        title='Top Destination Ports',
+                        color='Count',
+                        color_continuous_scale='Teal'
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
         
-        # Port Analysis
-        st.markdown('<div class="sub-header">Port Analysis</div>', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Source Port Analysis
-            if 'source_port' in df.columns:
-                source_port_counts = df['source_port'].value_counts().nlargest(10).reset_index()
-                source_port_counts.columns = ['Source Port', 'Count']
-                
-                fig = px.bar(
-                    source_port_counts,
-                    x='Source Port',
-                    y='Count',
-                    title='Top Source Ports',
-                    color='Count',
-                    color_continuous_scale='Teal'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Source port information not available in the dataset.")
-        
-        with col2:
-            # Destination Port Analysis
-            if 'destination_port' in df.columns:
-                dest_port_counts = df['destination_port'].value_counts().nlargest(10).reset_index()
-                dest_port_counts.columns = ['Destination Port', 'Count']
-                
-                fig = px.bar(
-                    dest_port_counts,
-                    x='Destination Port',
-                    y='Count',
-                    title='Top Destination Ports',
-                    color='Count',
-                    color_continuous_scale='Teal'
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Destination port information not available in the dataset.")
-        
-        # Service Analysis based on destination ports
+        # Only show service analysis if column exists
         if 'service' in df.columns:
             service_counts = df['service'].value_counts().nlargest(10).reset_index()
             service_counts.columns = ['Service', 'Count']
